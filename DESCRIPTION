@@ -1,0 +1,38 @@
+Package: BayesETS
+Type: Package
+Title: Forecasting using Bayesian ETS
+Version: 0.1.0
+Authors@R: c(
+    person(
+      given = "Lorenzo", 
+      family = "Zambon",
+      email = "lorenzo.zambon@supsi.ch",
+      role = c("aut", "cre"),
+      comment = c(ORCID = "0000-0002-8939-993X")
+    )
+  )
+Description: Bayesian exponential smoothing (ETS) state space models for
+    univariate time series, accounting for both parameter and model
+    uncertainty. The initial states and the error variance are integrated out
+    analytically, under a conjugate Normal-inverse-chi-squared prior; the
+    smoothing parameters are integrated numerically, by adaptive Gauss-Hermite
+    quadrature (AGHQ) or adaptive importance sampling (AIS). 
+    The ETS models are combined by Bayesian model averaging (BMA); the forecast
+    distribution is computed in closed form, as a mixture of Student-t distributions.
+    Currently only additive models are supported.
+License: LGPL (>= 3)
+URL: https://github.com/LorenzoZambon/BayesETS
+BugReports: https://github.com/LorenzoZambon/BayesETS/issues
+Encoding: UTF-8
+Imports: Rcpp (>= 1.1.0), graphics, grDevices, qrng, statmod, stats,
+        utils
+LinkingTo: Rcpp, RcppArmadillo
+Roxygen: list(markdown = TRUE)
+Suggests: testthat (>= 3.0.0), covr
+Config/testthat/edition: 3
+Config/roxygen2/version: 8.1.0
+NeedsCompilation: yes
+Packaged: 2026-11-02 15:25:45 UTC; lorenzo.zambon
+Author: Lorenzo Zambon [aut, cre] (ORCID:
+    <https://orcid.org/0000-0002-8939-993X>)
+Maintainer: Lorenzo Zambon <lorenzo.zambon@supsi.ch>

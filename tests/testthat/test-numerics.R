@@ -1,0 +1,146 @@
+# ---------------------------------------------------------------------------
+# Numerical robustness of the marginal likelihood
+# ---------------------------------------------------------------------------
+
+test_that("co2 ETS(A,A,A): no spurious evidence from exploding recursions", {
+  # The recursion explodes for many theta; the old clamp of the quadratic form
+  # at 0 gave log evidence ~ +600 instead of ~ -141
+  mc <- coerce_model_components("AAA", 12)
+  ctrl <- resolve_bets_control(list())
+  ctrl <- utils::modifyList(ctrl, prior_scales(co2, ctrl))
+  le <- vapply(c("quadrature", "ais"), function(im) {
+    set.seed(1)
+    fit_bets_models(co2, mc, ctrl, integration = im)$results[[1]]$log_evidence
+  }, numeric(1))
+  expect_true(all(le < -100))
+  expect_lt(abs(le[["quadrature"]] - le[["ais"]]), 0.05)
+})
+
+test_that("lost-precision evaluations are invalid, not spikes (uncentred co2)", {
+  # Without centring, no point may exceed the values of the centred series
+  mc <- c("A", "A", "A", "FALSE")
+  tn <- c("alpha", "beta", "gamma")
+  make_lg <- function(y) {
+    ctrl <- resolve_bets_control(list())
+    ctrl$psi0 <- ctrl$s2 <- 0.5 * (mean(diff(y, lag = 12)^2) + mean(diff(y)^2))
+    make_log_g_rb(y, mc, tn, ctrl, init_rb_prior(y, mc, tn, ctrl))
+  }
+  set.seed(1)
+  Z <- matrix(runif(3 * 500, -3, 3), ncol = 3)
+  lg_raw <- make_lg(co2)(Z)$log_g
+  lg_centred <- make_lg(co2 - mean(co2[1:12]))(Z)$log_g
+  expect_lt(max(lg_raw), max(lg_centred) + 1)
+})
+
+test_that("prior_scan() returns the candidates sorted by log g", {
+  tn <- c("alpha", "beta", "gamma")
+  log_g <- function(Z) list(log_g = -rowSums((Z - 0.3)^2))
+  set.seed(1)
+  s <- prior_scan(log_g, tn, n_scan = 16)
+  expect_equal(dim(s$Z), c(18L, 3L))   # heuristic + small smoothing + 16 Sobol points
+  expect_false(is.unsorted(rev(s$log_g)))
+  expect_true(any(apply(s$Z, 1, function(z) all(z == heuristic_z_start(tn)))))
+  expect_true(any(apply(s$Z, 1, function(z) all(z == small_smoothing_z(tn)))))
+})
+
+test_that("the mode search is not trapped in the unstable region (nottem, AAN)", {
+  # From the heuristic point, the mode search stops 15.8 log units too low
+  y <- nottem - mean(nottem[1:12])
+  mc <- c("A", "A", "N", "FALSE")
+  tn <- c("alpha", "beta")
+  ctrl <- resolve_bets_control(list())
+  ctrl$psi0 <- ctrl$s2 <- 0.5 * (mean(diff(nottem, lag = 12)^2) + mean(diff(nottem)^2))
+  lg <- make_log_g_rb(y, mc, tn, ctrl, init_rb_prior(y, mc, tn, ctrl))
+  set.seed(1)
+  best_of_1024 <- prior_scan(lg, tn, n_scan = 1024)$log_g[1]
+  set.seed(2)
+  lap <- laplace_mode(lg, prior_scan(lg, tn, n_scan = 64)$Z[1, ])
+  expect_gt(lg(matrix(lap$zhat, 1))$log_g, best_of_1024 - 1)
+})
+
+# ---------------------------------------------------------------------------
+# Priors of sigma^2 and of the initial states
+# ---------------------------------------------------------------------------
+
+test_that("default_s2() is the smaller residual variance of naive and seasonal naive", {
+  set.seed(1)
+  y <- ts(cumsum(rnorm(48)) + rep(10 * sin(2 * pi * (1:12) / 12), 4), frequency = 12)
+  expect_equal(default_s2(y), min(var(diff(y)), var(diff(y, lag = 12))))
+  # A drift does not count: variance, not mean square, of the differences
+  y1 <- ts(cumsum(rnorm(30)) + 5 * (1:30))
+  expect_equal(default_s2(y1), var(diff(y1)))
+  # Positive for deterministic series
+  expect_gt(default_s2(ts(1:20)), 0)
+})
+
+test_that("the prior median of sigma^2 is s2, unless psi0 is set", {
+  set.seed(1)
+  y <- ts(cumsum(rnorm(30)))
+  for (nu0 in c(3, 10)) {
+    sc <- prior_scales(y, resolve_bets_control(list(nu0 = nu0)))
+    expect_equal(sc$s2, default_s2(y))
+    # P(sigma^2 <= s2) = P(chi^2_nu0 >= psi0 / s2)
+    expect_equal(pchisq(sc$psi0 / sc$s2, nu0, lower.tail = FALSE), 0.5)
+  }
+  expect_equal(prior_scales(y, resolve_bets_control(list(psi0 = 2))),
+               list(psi0 = 2, s2 = default_s2(y)))
+})
+
+test_that("the initial-state prior depends on s2, not on nu0 and psi0", {
+  set.seed(1)
+  y <- ts(cumsum(rnorm(30)))
+  mc <- c("A", "A", "N", "FALSE")
+  tn <- c("alpha", "beta")
+  V0 <- function(nu0, psi0, s2) {
+    ctrl <- resolve_bets_control(list(nu0 = nu0, psi0 = psi0))
+    ctrl$s2 <- s2
+    init_rb_prior(y, mc, tn, ctrl)$V0
+  }
+  expect_equal(V0(nu0 = 3, psi0 = 2, s2 = 1), V0(nu0 = 10, psi0 = 50, s2 = 1))
+  expect_equal(V0(nu0 = 3, psi0 = 2, s2 = 2), V0(nu0 = 3, psi0 = 2, s2 = 1) / 2)
+})
+
+test_that("bets() fits deterministic series (straight line, trend + exact seasonality)", {
+  for (y in list(ts(1:20), ts(1:24 + rep(c(1, -1, 2, -2), 6), frequency = 4))) {
+    set.seed(1)
+    fit <- suppressWarnings(bets(y))
+    expect_equal(sum(fit$fit$model_weights), 1, tolerance = 1e-8)
+    expect_true(all(is.finite(predict(fit, h = 3)$mean)))
+  }
+})
+
+test_that("final states from the affine maps of the C++ kernel match the recursion", {
+  set.seed(1)
+  y <- ts(10 + cumsum(rnorm(30)) + rep(c(2, -1, 0, -1), length.out = 30), frequency = 4)
+  ctrl <- resolve_bets_control(list())
+  ctrl <- utils::modifyList(ctrl, prior_scales(y, ctrl))
+  for (code in c("ANN", "AAN", "AAdN", "ANA", "AAdA")) {
+    mc <- coerce_model_components(code, 4)[[1]]
+    flags <- model_flags(mc)
+    tn <- theta_names_of(mc)
+    # 20 random theta, each with random initial states eta (C++ order)
+    set.seed(2)
+    out <- make_log_g_rb(y, mc, tn, ctrl, init_rb_prior(y, mc, tn, ctrl))(
+      matrix(stats::rnorm(20 * length(tn)), ncol = length(tn)))
+    eta <- matrix(stats::rnorm(n_states(mc, 4) * 20, sd = 3), ncol = 20)
+    states <- t(final_states_rb(out$ml_res$final_coef, out$ml_res$final_const, eta, 1:20))
+    rss <- ets_residuals(as.numeric(y), flags$trend, flags$seas, flags$damped, 4,
+                         eta_to_r_order(eta, mc, 4), out$theta)
+    expect_equal(unname(states), unname(rss$states), tolerance = 1e-8, info = code)
+  }
+})
+
+test_that("centring the series leaves the evidence unchanged and restores the level", {
+  set.seed(2)
+  y <- ts(1000 + cumsum(rnorm(40)), frequency = 1)
+  mc <- coerce_model_components("AAN", 1)
+  ctrl <- resolve_bets_control(list())
+  ctrl <- utils::modifyList(ctrl, prior_scales(y, ctrl))
+  le_raw <- fit_one_model(y, mc[[1]], ctrl, "quadrature")$log_evidence
+  set.seed(1)
+  fit <- fit_bets_models(y, mc, ctrl, integration = "quadrature")$results[[1]]
+  # Equal up to the optimiser's tolerance on the mode (~1e-5).
+  expect_lt(abs(fit$log_evidence - le_raw), 1e-3)
+  # Final level states are on the scale of the data, not of the centred series.
+  expect_lt(abs(sum(fit$particles$w * fit$particles$final_mean["l", ]) - mean(tail(y, 5))), 5)
+})
