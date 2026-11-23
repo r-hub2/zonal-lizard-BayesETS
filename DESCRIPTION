@@ -1,7 +1,7 @@
 Package: BayesETS
 Type: Package
 Title: Forecasting using Bayesian ETS
-Version: 0.1.0
+Version: 0.1.1
 Authors@R: c(
     person(
       given = "Lorenzo", 
@@ -28,11 +28,11 @@ Imports: Rcpp (>= 1.1.0), graphics, grDevices, qrng, statmod, stats,
         utils
 LinkingTo: Rcpp, RcppArmadillo
 Roxygen: list(markdown = TRUE)
-Suggests: testthat (>= 3.0.0), covr
+Suggests: testthat (>= 3.1.7)
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.1.0
 NeedsCompilation: yes
-Packaged: 2026-11-02 15:25:45 UTC; lorenzo.zambon
+Packaged: 2026-11-23 10:00:54 UTC; lorenzo.zambon
 Author: Lorenzo Zambon [aut, cre] (ORCID:
     <https://orcid.org/0000-0002-8939-993X>)
 Maintainer: Lorenzo Zambon <lorenzo.zambon@supsi.ch>
